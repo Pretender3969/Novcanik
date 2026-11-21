@@ -1,5 +1,5 @@
 // Keš aplikacije, da radi i bez interneta. Verzija se menja sa svakim build-om.
-const CACHE = 'kt-5837225e32';
+const CACHE = 'kt-4de6e80ed3';
 const FILES = [
  "./",
  "index.html",

@@ -13,7 +13,7 @@ function timeLabel(ts) {
 export function renderSettings(ctx) {
   const p = ctx.platform;
   const cfg = p.syncConfig() ?? {};
-  if (draft.owner === null) { draft.owner = cfg.owner ?? ''; draft.repo = cfg.repo ?? 'home-tracker-data'; }
+  if (draft.owner === null) { draft.owner = cfg.owner ?? ''; draft.repo = cfg.repo ?? 'home-tracker'; }
   const s = p.syncState;
   const statusText = {
     off: 'Sinhronizacija nije podešena. Podaci su samo na ovom telefonu.',
