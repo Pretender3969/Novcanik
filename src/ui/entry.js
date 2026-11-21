@@ -28,19 +28,31 @@ export function createEntry(ctx, slot) {
     placeholder: 'npr. jaja 30 komada 600 dinara, hleb 80',
     'aria-label': 'Šta si kupio',
     onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); interpret(); } },
+    oninput: () => syncClear(),
   });
   const partial = h('p', { class: 'partial', hidden: true });
   const voiceHint = h('p', { class: 'hint', hidden: true },
     'Za unos glasom dodirni mikrofon na tastaturi telefona i izgovori npr. „jaja 30 komada 600 dinara“, pa dodirni Protumači.');
   const mic = h('button', { type: 'button', class: 'mic', hidden: true, 'aria-label': 'Diktiraj kupovinu', onclick: toggleMic }, 'Diktiraj');
   const go = h('button', { type: 'button', class: 'primary', onclick: interpret }, 'Protumači');
+  const clear = h('button', { type: 'button', class: 'ghost', disabled: true, 'aria-label': 'Obriši uneti tekst', onclick: clearInput }, 'Obriši');
+  function syncClear() { clear.disabled = !text.value; }
+  function clearInput() {
+    const d = state.caps.dictation;
+    if (d?.active()) d.stop();
+    text.value = '';
+    partial.hidden = true;
+    usedVoice = false;
+    syncClear();
+    text.focus();
+  }
   const cards = h('div', { class: 'cards', 'aria-live': 'polite' });
 
   slot.replaceChildren(
     h('div', { class: 'entry' },
       h('label', { for: 'quick', class: 'eyebrow' }, 'Brzi unos kupovine'),
       text, partial, voiceHint,
-      h('div', { class: 'entry-actions' }, mic, go)),
+      h('div', { class: 'entry-actions' }, h('div', { class: 'left' }, mic, clear), go)),
     cards,
   );
 
@@ -52,6 +64,7 @@ export function createEntry(ctx, slot) {
     d.onFinal(({ text: t }) => {
       text.value = text.value ? text.value + t : t.trimStart();
       usedVoice = true;
+      syncClear();
     });
     d.onState(({ state: s, reason }) => {
       const on = s !== 'idle';
@@ -140,7 +153,7 @@ Cena je UKUPNO plaćeno za stavku. Brojeve rečima pretvori u cifre ("hiljadu dv
         sum += Number(l.total);
       }
       const n = lines.length;
-      lines = []; text.value = ''; usedVoice = false;
+      lines = []; text.value = ''; usedVoice = false; syncClear();
       ctx.toast(`Sačuvano: ${n} ${n === 1 ? 'stavka' : n < 5 ? 'stavke' : 'stavki'}, ${formatRSD(sum)} RSD`);
     });
     busy = false; drawCards();
