@@ -25,6 +25,13 @@ export function monthLabel(month) {
   return `${MONTHS[m - 1]} ${y}.`;
 }
 
+const SHORT = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
+
+export function monthShort(month) {
+  const [y, m] = month.split('-').map(Number);
+  return `${SHORT[m - 1]} ${y}.`;
+}
+
 export function shiftMonth(month, delta) {
   const [y, m] = month.split('-').map(Number);
   const d = new Date(y, m - 1 + delta, 1);

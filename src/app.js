@@ -1,7 +1,7 @@
 // Kućni Trošak: pokretanje, stanje, tabovi.
 import { createStore, ensureMonthPayments } from './store.js';
 import { monthKey } from './totals.js';
-import { h, monthLabel, shiftMonth } from './ui/dom.js';
+import { h, monthLabel, monthShort, shiftMonth } from './ui/dom.js';
 import { createEntry } from './ui/entry.js';
 import { renderHome } from './ui/home.js';
 import { renderPurchases } from './ui/purchases.js';
@@ -63,7 +63,8 @@ const ctx = {
 let entry = null;
 
 function renderHeader() {
-  $('month-label').textContent = monthLabel(state.month);
+  $('month-label').textContent = monthShort(state.month);
+  $('month-label').title = monthLabel(state.month);
   $('settings-btn').classList.toggle('warn', !!ctx.platform && ['off', 'error'].includes(ctx.platform.syncState.status));
   $('month-switch').hidden = !['home', 'kupovina', 'racuni', 'kuhinja', 'analiza'].includes(state.tab);
   for (const btn of document.querySelectorAll('#tabs button')) {
