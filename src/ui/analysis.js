@@ -1,6 +1,7 @@
 // Analiza: ovaj mesec, trend 6 meseci, kandidati za izbacivanje, praćeni artikli, Pitaj Claude.
 import { trend, candidates, savings, summaryForClaude } from '../analysis.js';
 import { monthSummary } from '../totals.js';
+import { foodReport, foodTrend } from '../food-report.js';
 import { formatRSD } from '../format.js';
 import { h, today, monthLabel } from './dom.js';
 
@@ -37,6 +38,7 @@ export function renderAnalysis(ctx) {
   return h('div', { class: 'stack' },
     thisMonth(ctx, s, cur, prev),
     chart(ctx, tr),
+    foodSection(ctx),
     candidateList(ctx, d),
     watched(ctx),
     askClaude(ctx, d));
@@ -173,4 +175,60 @@ ${JSON.stringify(summaryForClaude(ctx.state.month, d), null, 1)}`;
       },
     }, 'Kopiraj sažetak'),
     area);
+}
+
+// ---------- Izveštaj hrane ----------
+
+const SHORT_M = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
+const pct = (part, whole) => (whole ? Math.round((part / whole) * 100) : 0);
+
+function foodSection(ctx) {
+  const { state } = ctx;
+  const d = {
+    purchases: state.rows.purchases, items: state.rows.items, categories: state.rows.categories,
+    cooking: state.rows.cooking, stockAdjust: state.rows.stockAdjust,
+  };
+  const r = foodReport(state.month, d);
+  const tr = foodTrend(state.month, 6, d);
+  const title = h('h2', {}, `Hrana · ${monthLabel(state.month)}`);
+  if (!r.bought && !r.cooked) {
+    return h('section', { class: 'panel' }, title,
+      h('p', { class: 'hint' }, 'Ovog meseca nema kupljenih namirnica ni zabeleženog kuvanja. Kad unosiš kupovinu i beležiš kuvanje u Kuhinji, ovde vidiš gde novac za hranu završi.'));
+  }
+  const base = Math.max(r.bought, r.cooked + r.wasted, 1);
+  const seg = (cls, v, label) => (v > 0 ? h('span', { class: `fseg ${cls}`, style: { flexGrow: v }, title: `${label}: ${formatRSD(v)} RSD` }) : null);
+  const row = (cls, label, v, note) => [
+    h('dt', {}, h('i', { class: `sw ${cls}` }), label, note ? h('small', {}, note) : null),
+    h('dd', {}, `${formatRSD(v)} `, h('small', {}, `${pct(v, base)}%`)),
+  ];
+  const dishes = r.dishes.length
+    ? h('ul', { class: 'list' }, r.dishes.map((x) => h('li', {},
+      h('span', {}, x.name, h('small', {}, `${x.times}× · ${x.servings} porc.`)),
+      h('span', { class: 'num' }, `${formatRSD(x.perServing)}`, h('small', {}, 'po porciji')))))
+    : h('p', { class: 'hint' }, 'Nema zabeleženog kuvanja ovog meseca. Beleži kuvanje u Kuhinji (ili „Skuvano“ iz plana).');
+  const trendRows = tr.map((t) => {
+    const [, m] = t.month.split('-').map(Number);
+    const sel = t.month === state.month;
+    return h('tr', { class: sel ? 'sel' : '' },
+      h('td', {}, SHORT_M[m - 1]),
+      h('td', { class: 'num' }, t.bought ? formatRSD(t.bought) : '–'),
+      h('td', { class: 'num' }, t.bought ? `${pct(t.cooked, t.bought)}%` : '–'),
+      h('td', { class: 'num' }, t.wasted ? formatRSD(t.wasted) : '–'));
+  });
+  return h('section', { class: 'panel' },
+    title,
+    h('p', { class: 'big' }, formatRSD(r.bought), h('small', {}, ' RSD za namirnice')),
+    h('div', { class: 'fbar', role: 'img', 'aria-label': `Skuvano ${pct(r.cooked, base)}%, bačeno ${pct(r.wasted, base)}%, ostalo ${pct(r.rest, base)}%` },
+      seg('fcooked', r.cooked, 'Skuvano'), seg('fwasted', r.wasted, 'Bačeno'), seg('frest', r.rest, 'Ostalo')),
+    h('dl', { class: 'ledger food' },
+      row('fcooked', 'Skuvano po receptima', r.cooked),
+      row('fwasted', 'Bačeno', r.wasted),
+      row('frest', 'Ostalo', r.rest, 'pojedeno bez recepta, na polici ili nezabeleženo')),
+    r.servings > 0 && h('p', { class: 'sum' }, `${r.servings} porcija · prosečno `, h('strong', {}, `${formatRSD(r.perServing)} RSD`), ' po porciji'),
+    h('h3', { class: 'eyebrow' }, 'Jela ovog meseca'),
+    dishes,
+    h('h3', { class: 'eyebrow' }, 'Poslednjih 6 meseci'),
+    h('div', { class: 'tablewrap' }, h('table', { class: 'ftable' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Mesec'), h('th', {}, 'Namirnice'), h('th', {}, 'Skuvano'), h('th', {}, 'Bačeno'))),
+      h('tbody', {}, trendRows))));
 }

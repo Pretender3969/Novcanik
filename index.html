@@ -152,6 +152,21 @@ input.inline { width: 11ch; text-align: right; }
 .list .num:has(small) { flex-direction: column; align-items: flex-end; gap: 0; }
 .list li .pill { margin-left: 6px; vertical-align: 1px; }
 .warn-text { color: var(--warn); }
+.fbar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; background: var(--bg); }
+.fseg { display: block; min-width: 3px; }
+.fseg.fcooked, .sw.fcooked { background: var(--chart-rest); }
+.fseg.fwasted, .sw.fwasted { background: var(--chart-vice); }
+.fseg.frest, .sw.frest { background: var(--line); }
+.ledger.food dt { flex-wrap: wrap; }
+.ledger.food dt small { flex-basis: 100%; color: var(--muted); font-size: .78rem; }
+.ledger.food dd small { color: var(--muted); font-size: .78rem; }
+h3.eyebrow { margin-top: 4px; }
+.tablewrap { overflow-x: auto; }
+.ftable { width: 100%; border-collapse: collapse; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.ftable th { text-align: right; font-weight: 600; color: var(--muted); font-size: .75rem; padding: 4px 6px; }
+.ftable th:first-child, .ftable td:first-child { text-align: left; }
+.ftable td { padding: 6px; border-top: 1px solid var(--line); text-align: right; }
+.ftable tr.sel td { font-weight: 600; color: var(--fg); background: var(--bg); }
 .weeknav strong { font-size: .95rem; }
 .weeknav button { min-width: 44px; font-size: 1.1rem; }
 .day-plan.today { border-color: var(--accent); }

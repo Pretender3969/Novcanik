@@ -1,5 +1,5 @@
 // Keš aplikacije, da radi i bez interneta. Verzija se menja sa svakim build-om.
-const CACHE = 'kt-9231f1c798';
+const CACHE = 'kt-6424367366';
 const FILES = [
  "./",
  "index.html",
@@ -8,6 +8,7 @@ const FILES = [
  "icons/icon-512.png",
  "src/analysis.js",
  "src/app.js",
+ "src/food-report.js",
  "src/format.js",
  "src/kitchen.js",
  "src/normalize.js",
@@ -51,7 +52,8 @@ self.addEventListener('fetch', (e) => {
   }
   if (url.origin === self.location.origin) {
     // Prvo mreža (uvek najnovija verzija), keš samo kad nema interneta.
-    e.respondWith(fetch(e.request).then((r) => {
+    // no-cache: uvek pitaj server da li postoji novija verzija (zaobilazi HTTP keš pregledača).
+    e.respondWith(fetch(e.request.url, { cache: 'no-cache' }).then((r) => {
       if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
       return r;
     }).catch(() => caches.match(e.request, { ignoreSearch: true })));
