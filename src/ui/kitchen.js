@@ -4,6 +4,7 @@ import { monthKey } from '../totals.js';
 import { formatRSD } from '../format.js';
 import { normalize } from '../normalize.js';
 import { h, today, dayLabel, qtyLabel } from './dom.js';
+import { weekStart, weekDays, shoppingList, formatQty, listText } from '../planning.js';
 
 const MEALS = [['dorucak', 'Doručak'], ['rucak', 'Ručak'], ['vecera', 'Večera'], ['uzina', 'Užina'], ['ostalo', 'Ostalo']];
 const UNITS = ['kom', 'kg', 'g', 'l', 'ml'];
@@ -15,17 +16,17 @@ const ui = { sub: null, cook: null, edit: null, confirm: null, shelfOpen: null, 
 function loadSub() {
   if (ui.sub) return ui.sub;
   try { ui.sub = localStorage.getItem('kt-kitchen'); } catch {}
-  if (!['kuvanje', 'recepti', 'polica'].includes(ui.sub)) ui.sub = 'kuvanje';
+  if (!['kuvanje', 'plan', 'recepti', 'polica'].includes(ui.sub)) ui.sub = 'kuvanje';
   return ui.sub;
 }
 
 export function renderKitchen(ctx) {
   const sub = loadSub();
   const tabs = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Kuhinja' },
-    [['kuvanje', 'Kuvanje'], ['recepti', 'Recepti'], ['polica', 'Polica']].map(([id, label]) =>
+    [['kuvanje', 'Kuvanje'], ['plan', 'Plan'], ['recepti', 'Recepti'], ['polica', 'Polica']].map(([id, label]) =>
       h('button', { type: 'button', role: 'tab', 'aria-selected': String(sub === id), 'aria-pressed': String(sub === id),
         onclick: () => { ui.sub = id; ui.confirm = null; try { localStorage.setItem('kt-kitchen', id); } catch {} ctx.render(); } }, label)));
-  const body = { kuvanje: cooking, recepti: recipes, polica: pantry }[sub](ctx);
+  const body = { kuvanje: cooking, plan: planView, recepti: recipes, polica: pantry }[sub](ctx);
   return h('div', { class: 'stack' }, tabs, body);
 }
 
@@ -38,13 +39,14 @@ function costOf(ctx, consumption, date) {
 
 // ---------- Kuvanje ----------
 
-function startCook(ctx, recipeId, servings) {
+function startCook(ctx, recipeId, servings, planId = null) {
   const recipe = ctx.state.rows.recipes.find((r) => r.id === recipeId);
   if (!recipe) { ui.cook = null; return; }
   const items = ctx.state.rows.items;
   const n = Number(servings) > 0 ? Number(servings) : Math.max(Number(recipe.servings) || 1, 1);
   ui.cook = {
     recipeId, servings: n, date: ui.cook?.date ?? today(),
+    planId: planId ?? (ui.cook?.recipeId === recipeId ? ui.cook?.planId : null),
     lines: consumptionFor(recipe, n, items).map((l) => ({ ...l })),
     skipped: (recipe.ingredients ?? []).map((i) => ({ name: i.name, ...resolveIngredient(i, items) })).filter((r) => r.problem),
   };
@@ -112,6 +114,8 @@ function cookPreview(ctx, c) {
             date: c.date, recipeId: c.recipeId, recipeName: recipe?.name ?? '', servings: c.servings,
             consumption: c.lines.filter((l) => l.qty > 0).map((l) => ({ itemId: l.itemId, qty: l.qty })),
           });
+          const planned = c.planId && state.rows.mealPlan.find((m) => m.id === c.planId);
+          if (planned) { const { id, ...body } = planned; await state.store.put('mealPlan', id, { ...body, done: true }); }
           ui.cook = null;
         }, `Zabeleženo: ${recipe?.name ?? 'jelo'}`);
       } }, 'Zabeleži kuvanje')));
@@ -269,4 +273,138 @@ function pantry(ctx) {
           } }, 'Bačeno')),
         h('button', { type: 'button', class: 'link', onclick: () => { ui.shelfOpen = null; ctx.render(); } }, 'Zatvori'));
     }))));
+}
+
+// ---------- Plan obroka ----------
+
+const MEAL_ORDER = Object.fromEntries(MEALS.map(([v], i) => [v, i]));
+const SHORT_MONTH = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
+const shortDay = (iso) => { const [, m, d] = iso.split('-').map(Number); return `${d}. ${SHORT_MONTH[m - 1]}`; };
+
+function defaultServings() {
+  try { return Number(localStorage.getItem('kt-servings')) || 4; } catch { return 4; }
+}
+function boughtSet(week) {
+  try { return new Set(JSON.parse(localStorage.getItem(`kt-kupljeno-${week}`) || '[]')); } catch { return new Set(); }
+}
+function saveBought(week, set) {
+  try { localStorage.setItem(`kt-kupljeno-${week}`, JSON.stringify([...set])); } catch {}
+}
+
+function planView(ctx) {
+  const { state } = ctx;
+  if (!ui.week) ui.week = weekStart(today());
+  const days = weekDays(ui.week);
+  const shift = (n) => {
+    const d = new Date(`${ui.week}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 7 * n);
+    ui.week = d.toISOString().slice(0, 10);
+    ui.add = null;
+    ctx.render();
+  };
+  const entries = state.rows.mealPlan.filter((m) => m.date >= days[0] && m.date <= days[6]);
+  const recipesSorted = [...state.rows.recipes].sort((a, b) => a.name.localeCompare(b.name, 'sr'));
+
+  const nav = h('div', { class: 'row spread weeknav' },
+    h('button', { type: 'button', class: 'ghost small', 'aria-label': 'Prethodna nedelja', onclick: () => shift(-1) }, '‹'),
+    h('strong', {}, `${shortDay(days[0])} – ${shortDay(days[6])}`),
+    h('button', { type: 'button', class: 'ghost small', 'aria-label': 'Sledeća nedelja', onclick: () => shift(1) }, '›'));
+
+  const addForm = (date) => {
+    const a = ui.add;
+    const save = () => {
+      const r = state.rows.recipes.find((x) => x.id === a.recipeId);
+      const n = Math.max(Number(a.servings) || 1, 1);
+      if (!r) { ctx.toast('Izaberi jelo.'); return; }
+      try { localStorage.setItem('kt-servings', String(n)); } catch {}
+      ctx.run(async () => {
+        await state.store.add('mealPlan', { date, meal: a.meal, recipeId: r.id, recipeName: r.name, servings: n, done: false });
+        ui.add = null;
+      }, `${r.name} je u planu`);
+    };
+    return h('div', { class: 'card' },
+      h('div', { class: 'row' },
+        h('select', { id: 'plan-meal', 'aria-label': 'Obrok', onchange: (e) => { a.meal = e.target.value; } },
+          MEALS.map(([v, l]) => h('option', { value: v, selected: v === a.meal }, l))),
+        h('label', { class: 'money servings' },
+          h('input', { id: 'plan-servings', type: 'number', min: '1', step: '1', inputmode: 'numeric', value: a.servings, 'aria-label': 'Broj porcija', oninput: (e) => { a.servings = e.target.value; } }),
+          h('span', {}, 'porc.'))),
+      h('select', { id: 'plan-recipe', 'aria-label': 'Jelo', onchange: (e) => { a.recipeId = e.target.value; } },
+        h('option', { value: '' }, 'Izaberi jelo…'),
+        recipesSorted.map((r) => h('option', { value: r.id, selected: r.id === a.recipeId }, r.name))),
+      h('div', { class: 'entry-actions' },
+        h('button', { type: 'button', class: 'ghost', onclick: () => { ui.add = null; ctx.render(); } }, 'Odustani'),
+        h('button', { type: 'button', class: 'primary', onclick: save }, 'Dodaj')));
+  };
+
+  const cookFromPlan = (m) => {
+    ui.cook = null;
+    startCook(ctx, m.recipeId, m.servings, m.id);
+    if (ui.cook) ui.cook.date = m.date <= today() ? m.date : today();
+    ui.sub = 'kuvanje';
+    ctx.render();
+    window.scrollTo(0, 0);
+  };
+
+  const dayBlocks = days.map((date) => {
+    const list = entries.filter((m) => m.date === date).sort((x, y) => (MEAL_ORDER[x.meal] ?? 9) - (MEAL_ORDER[y.meal] ?? 9));
+    const isToday = date === today();
+    return h('section', { class: `panel day-plan${isToday ? ' today' : ''}` },
+      h('h2', { class: 'day' }, dayLabel(date), isToday ? h('span', { class: 'pill warn' }, 'danas') : null),
+      list.length ? h('ul', { class: 'list' }, list.map((m) => h('li', { class: m.done ? 'paid' : '' },
+        h('span', {}, m.recipeName,
+          h('small', {}, `${MEALS.find(([v]) => v === m.meal)?.[1] ?? ''} · ${m.servings} porc.${m.done ? ' · skuvano' : ''}`)),
+        h('span', { class: 'row qty' },
+          !m.done && h('button', { type: 'button', class: 'ghost small', onclick: () => cookFromPlan(m) }, 'Skuvano'),
+          ui.confirm === `plan-${m.id}`
+            ? h('button', { type: 'button', class: 'danger small', onclick: () => ctx.run(async () => { await state.store.remove('mealPlan', m.id); ui.confirm = null; }, 'Uklonjeno iz plana') }, 'Ukloni')
+            : h('button', { type: 'button', class: 'icon', 'aria-label': `Ukloni ${m.recipeName} iz plana`, onclick: () => { ui.confirm = `plan-${m.id}`; ctx.render(); } }, '×'))))) : null,
+      ui.add?.date === date
+        ? addForm(date)
+        : h('button', { type: 'button', class: 'link small', onclick: () => { ui.add = { date, meal: 'rucak', recipeId: '', servings: defaultServings() }; ctx.render(); } }, '+ obrok'));
+  });
+
+  return h('div', { class: 'stack' }, nav,
+    !recipesSorted.length && h('p', { class: 'hint' }, 'Prvo dodaj recepte (deo Recepti), pa ih rasporedi po danima.'),
+    shopping(ctx, entries), dayBlocks);
+}
+
+function shopping(ctx, entries) {
+  const { state } = ctx;
+  const open = entries.filter((m) => !m.done);
+  if (!open.length) {
+    return h('section', { class: 'panel' }, h('h2', {}, 'Spisak za kupovinu'),
+      h('p', { class: 'hint' }, 'Dodaj obroke za ovu nedelju; spisak se pravi sam, umanjen za ono što je već na polici.'));
+  }
+  const shelfRows = shelf(state.rows.items, state.rows.categories, state.rows.purchases, state.rows.cooking, state.rows.stockAdjust, { from: shelfFrom(today()) });
+  const list = shoppingList(open, { recipes: state.rows.recipes, items: state.rows.items, shelfRows, purchases: state.rows.purchases }, today());
+  const bought = boughtSet(ui.week);
+  const toBuy = list.lines.filter((l) => l.buy > 0);
+  const have = list.lines.filter((l) => l.buy === 0);
+  const copy = () => {
+    const text = listText(list);
+    const done = () => ctx.toast('Spisak je kopiran.');
+    const fail = () => ctx.toast('Kopiranje nije uspelo.');
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, fail); else fail();
+  };
+  const toggle = (id) => {
+    if (bought.has(id)) bought.delete(id); else bought.add(id);
+    saveBought(ui.week, bought);
+    ctx.render();
+  };
+  const planned = `${open.length} ${open.length === 1 ? 'planiran obrok' : 'planiranih obroka'}`;
+  return h('section', { class: 'panel' },
+    h('h2', {}, 'Spisak za kupovinu', h('span', { class: 'num' }, `≈ ${formatRSD(list.total)} RSD`)),
+    h('p', { class: 'hint' }, `Za ${planned}, umanjeno za ono što je na polici.${list.unpriced ? ` Bez cene: ${list.unpriced} (još nisu kupovani).` : ''}`),
+    toBuy.length
+      ? h('ul', { class: 'list bills' }, toBuy.map((l) => h('li', { class: bought.has(l.itemId) ? 'paid' : '' },
+        h('label', { class: 'check' },
+          h('input', { id: `buy-${l.itemId}`, type: 'checkbox', checked: bought.has(l.itemId), onchange: () => toggle(l.itemId) }),
+          h('span', {}, l.name, h('small', {}, l.have > 0 ? `treba ${formatQty(l.need, l.unit)}, imaš ${formatQty(l.have, l.unit)}` : `treba ${formatQty(l.need, l.unit)}`))),
+        h('span', { class: 'num' }, formatQty(l.buy, l.unit), h('small', {}, l.cost === null ? 'bez cene' : `≈ ${formatRSD(l.cost)}`)))))
+      : h('p', { class: 'hint' }, 'Sve što treba već je na polici.'),
+    have.length > 0 && h('p', { class: 'hint' }, `Već imaš: ${have.map((l) => l.name).join(', ')}.`),
+    list.missing.length > 0 && h('p', { class: 'hint warn-text' }, 'Dopuni recept: ', list.missing.map((m) => `${m.recipe} – ${m.ingredient}`).join('; '), '.'),
+    toBuy.length > 0 && h('div', { class: 'entry-actions' },
+      h('button', { type: 'button', class: 'ghost', onclick: copy }, 'Kopiraj spisak')));
 }

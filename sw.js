@@ -1,5 +1,5 @@
 // Keš aplikacije, da radi i bez interneta. Verzija se menja sa svakim build-om.
-const CACHE = 'kt-972ed6ecb9';
+const CACHE = 'kt-9231f1c798';
 const FILES = [
  "./",
  "index.html",
@@ -12,6 +12,7 @@ const FILES = [
  "src/kitchen.js",
  "src/normalize.js",
  "src/parser.js",
+ "src/planning.js",
  "src/platform/local-store.js",
  "src/platform/speech.js",
  "src/store.js",

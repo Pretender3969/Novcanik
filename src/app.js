@@ -13,7 +13,7 @@ import { createLocalStore } from './platform/local-store.js';
 import { createSpeechDictation } from './platform/speech.js';
 import { createGitHub, syncAll } from './sync.js';
 
-const COLLECTIONS = ['categories', 'items', 'purchases', 'payments', 'income', 'bills', 'recipes', 'cooking', 'stockAdjust'];
+const COLLECTIONS = ['categories', 'items', 'purchases', 'payments', 'income', 'bills', 'recipes', 'cooking', 'stockAdjust', 'mealPlan'];
 const TABS = [
   ['home', 'Početna'], ['kupovina', 'Kupovina'], ['racuni', 'Računi'], ['kuhinja', 'Kuhinja'], ['analiza', 'Analiza'],
 ];
